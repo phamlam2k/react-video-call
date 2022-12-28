@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react'
+/* eslint-disable @typescript-eslint/no-empty-function */
+import React, { Dispatch, SetStateAction, useEffect, useRef, useState } from 'react'
 import { io } from 'socket.io-client'
 import Peer from 'simple-peer'
 import { SOCKET_KEYS } from '@src/models/socket'
@@ -6,7 +7,41 @@ import { useRouter } from 'next/router'
 
 const socket = io(process.env.NEXT_PUBLIC_SOCKET_IO_URL as string)
 
-const SocketContext = React.createContext({})
+interface ISocketContext {
+  call: ICall
+  callStatus: ICallStatus
+  myVideoRef: React.RefObject<HTMLVideoElement>
+  userVideoRef: React.RefObject<HTMLVideoElement>
+  stream: MediaStream | undefined
+  name: string
+  setName: Dispatch<SetStateAction<string>>
+  me: string
+  callUser: (id: string) => void
+  leaveCall: () => void
+  answerCall: () => void
+}
+
+const SocketContext = React.createContext<ISocketContext>({
+  call: {
+    from: '',
+    name: '',
+    signal: '',
+    isReceivedCall: false,
+  },
+  callStatus: {
+    accepted: false,
+    ended: false,
+  },
+  myVideoRef: React.createRef<HTMLVideoElement>(),
+  userVideoRef: React.createRef<HTMLVideoElement>(),
+  stream: undefined,
+  name: '',
+  setName: function () {},
+  me: '',
+  callUser: function (_id) {},
+  leaveCall: function () {},
+  answerCall: function () {},
+})
 
 interface Props {
   children: React.ReactNode
@@ -24,7 +59,7 @@ interface ICallStatus {
   ended: boolean
 }
 
-export const SocketContextProvider: React.FC<Props> = ({ children }) => {
+const SocketContextProvider: React.FC<Props> = ({ children }) => {
   const router = useRouter()
   const [stream, setStream] = useState<MediaStream>()
   const [me, setMe] = useState<string>('')
@@ -52,17 +87,17 @@ export const SocketContextProvider: React.FC<Props> = ({ children }) => {
       }
     })
 
-    socket.on(SOCKET_KEYS.ME, (id: string) => {
-      setMe(id)
-    })
+    if (socket.connected) {
+      setMe(socket.id)
+    }
     socket.on(SOCKET_KEYS.CALL_USER, ({ from, name: callerName, signal }: ICallUser) => {
       setCall({ isReceivedCall: true, from, name: callerName, signal })
     })
 
-    return () => {
-      socket.off(SOCKET_KEYS.ME)
-      socket.off(SOCKET_KEYS.CALL_USER)
-    }
+    // return () => {
+    //   socket.off(SOCKET_KEYS.ME)
+    //   socket.off(SOCKET_KEYS.CALL_USER)
+    // }
   }, [])
 
   const answerCall = () => {
@@ -89,7 +124,7 @@ export const SocketContextProvider: React.FC<Props> = ({ children }) => {
     const peer = new Peer({ initiator: true, trickle: false, stream })
 
     peer.on('signal', (data) => {
-      socket.emit('callUser', { userToCall: id, signalData: data, from: me, name })
+      socket.emit(SOCKET_KEYS.CALL_USER, { userToCall: id, signalData: data, from: me, name })
     })
 
     peer.on('stream', (currentStream) => {
@@ -98,7 +133,7 @@ export const SocketContextProvider: React.FC<Props> = ({ children }) => {
       }
     })
 
-    socket.on(SOCKET_KEYS.ACCEPTED_CALL, (signal) => {
+    socket.on(SOCKET_KEYS.ACCEPTED_CALL, ({ signal }: Record<'signal', Peer.SignalData>) => {
       setCallStatus((prev) => ({ ...prev, accepted: true }))
 
       peer.signal(signal)
@@ -123,3 +158,5 @@ export const SocketContextProvider: React.FC<Props> = ({ children }) => {
     </SocketContext.Provider>
   )
 }
+
+export { SocketContext, SocketContextProvider }
